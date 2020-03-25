@@ -11,7 +11,7 @@ echo "Generating ignition configs"
 
 podman_run \
         --volume "$PWD/install-dir:/install-dir:Z" \
-        --env OPENSHIFT_INSTALL_RELEASE_IMAGE_OVERRIDE=quay.io/openshift-release-dev/ocp-release-nightly@sha256:6e444e55eba18a03926a793607952c329af547867ed3739882f1de02c4f05fc3 \
+        --env OPENSHIFT_INSTALL_RELEASE_IMAGE_OVERRIDE=quay.io/openshift-release-dev/ocp-release:4.4.0-rc.4-x86_64 \
         "${OPENSHIFT_INSTALLER_IMAGE}" \
         create ignition-configs \
         --dir=/install-dir
