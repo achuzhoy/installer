@@ -6,13 +6,23 @@ master2=192.168.126.13
 SSH=ssh -o StrictHostKeyChecking=no core@
 SCP=scp -o StrictHostKeyChecking=no
 
-start_bootstrap:
-	sudo virt-install --name bootstrap --memory 6000 --vcpus 2  --network=network:eran-jcr2x,mac=52:54:00:EE:42:E1  --cdrom /home/eran/Downloads/fedora-eran-31.20200322.dev.1-live.x86_64.iso --disk pool=default,size=10 --os-type=linux --os-variant=generic --noautoconsole --events on_reboot=restart
+all: create_bootstrap create_masters
+	NAME=bootstrap make wait_for_ip
+	sleep 10
+	make run_bootkube
+	make master_ign
+	make install_masters
 
-start_masters:
-	sudo virt-install --name master0 --memory 6000 --vcpus 2  --network=network:eran-jcr2x,mac=52:54:00:D6:A8:ED  --cdrom /home/eran/Downloads/fedora-eran-31.20200322.dev.1-live.x86_64.iso --disk pool=default,size=10 --os-type=linux --os-variant=generic --noautoconsole --events on_reboot=restart
-	sudo virt-install --name master1 --memory 6000 --vcpus 2  --network=network:eran-jcr2x,mac=52:54:00:D6:A8:EE  --cdrom /home/eran/Downloads/fedora-eran-31.20200322.dev.1-live.x86_64.iso --disk pool=default,size=10 --os-type=linux --os-variant=generic --noautoconsole --events on_reboot=restart
-	sudo virt-install --name master2 --memory 6000 --vcpus 2  --network=network:eran-jcr2x,mac=52:54:00:D6:A8:EF  --cdrom /home/eran/Downloads/fedora-eran-31.20200322.dev.1-live.x86_64.iso --disk pool=default,size=10 --os-type=linux --os-variant=generic --noautoconsole --events on_reboot=restart
+create_network:
+	sudo virsh net-create --file net.xml
+
+create_bootstrap:
+	sudo virt-install --name bootstrap --memory 6000 --vcpus 2  --network=network:eran-net,mac=52:54:00:1a:ed:b7  --cdrom /home/eran/Downloads/fedora-eran-31.20200322.dev.1-live.x86_64.iso --disk pool=default,size=10 --os-type=linux --os-variant=generic --noautoconsole --events on_reboot=restart
+
+create_masters:
+	sudo virt-install --name master0 --memory 6000 --vcpus 2  --network=network:eran-net,mac=52:54:00:26:b0:b9  --cdrom /home/eran/Downloads/fedora-eran-31.20200322.dev.1-live.x86_64.iso --disk pool=default,size=10 --os-type=linux --os-variant=generic --noautoconsole --events on_reboot=restart
+	sudo virt-install --name master1 --memory 6000 --vcpus 2  --network=network:eran-net,mac=52:54:00:26:b0:ba  --cdrom /home/eran/Downloads/fedora-eran-31.20200322.dev.1-live.x86_64.iso --disk pool=default,size=10 --os-type=linux --os-variant=generic --noautoconsole --events on_reboot=restart
+	sudo virt-install --name master2 --memory 6000 --vcpus 2  --network=network:eran-net,mac=52:54:00:b2:14:74  --cdrom /home/eran/Downloads/fedora-eran-31.20200322.dev.1-live.x86_64.iso --disk pool=default,size=10 --os-type=linux --os-variant=generic --noautoconsole --events on_reboot=restart
 
 wait_for_ip:
 	until ping -c1 $($(NAME)) >/dev/null 2>&1; do :; done
@@ -28,9 +38,38 @@ run_bootkube:
 master_ign:
 	$(SSH)$(bootstrap) "sudo cat ~/install-dir/master.ign" > ./master.ign
 
+install_masters:
+	for i in 0 1 2; do \
+	NAME=master$$i make install_master & \
+	done
+
 install_master:
 	$(SCP) ./master.ign   core@$($(NAME)):
-	$(SSH)$($(NAME)) "sudo coreos-installer install --image-url https://mirror.openshift.com/pub/openshift-v4/dependencies/rhcos/4.3/latest/rhcos-4.3.0-x86_64-metal.raw.gz --insecure -i /var/home/core/master.ign /dev/sda"
+	$(SSH)$($(NAME)) "sudo coreos-installer install --image-url https://mirror.openshift.com/pub/openshift-v4/dependencies/rhcos/4.4/latest/rhcos-4.4.0-rc.1-x86_64-metal.x86_64.raw.gz --insecure -i /var/home/core/master.ign /dev/sda"
+	make reboot
 
 reboot:
-	$(SSH)$($(NAME)) "sudo shutdown -r"
+	$(SSH)$($(NAME)) "sudo reboot"
+
+start_masters:
+	for i in 0 1 2; do \
+	sudo virsh start master$$i; \
+	done
+
+destroy: destroy_masaters destroy_bootstrap
+
+destroy_masaters:
+	for i in 0 1 2; do \
+	sudo virsh destroy master$$i && \
+	sudo virsh undefine master$$i && \
+	 sudo virsh  vol-delete master$$i.qcow2 --pool default; \
+	done
+
+destroy_bootstrap:
+	sudo virsh destroy bootstrap
+	sudo virsh undefine bootstrap
+	sudo virsh  vol-delete bootstrap.qcow2 --pool default
+
+destroy_network:
+	sudo virsh net-destroy eran-net
+	sudo virsh net-undefine eran-net
