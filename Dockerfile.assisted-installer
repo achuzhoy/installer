@@ -1,0 +1,4 @@
+FROM alpine
+copy run_bootstrap.sh /
+copy install_node.sh /
+ENTRYPOINT ["/install_node.sh"]
